@@ -26,7 +26,12 @@ describe 'ActiveRecordless' do
   it "should stub out create"
   it "should warn on find_by_sql"
   it "should stub out columns" do
+    ActiveRecord::Base.disconnect!
     @ar_class.columns.should == []
+  end
+
+  it "should only work if disconnect is called" do
+    lambda { @ar_class.columns }.should raise_error
   end
   it "should stub out associations"
 end

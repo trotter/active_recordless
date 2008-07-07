@@ -1,38 +1,78 @@
 # ActiveRecordless
 class Object
+  def remove_class_method(meth)
+    metaclass.send :remove_method, meth
+  end
+
   def metaclass
     class << self; self; end
   end
 end
 
 class Module
-  def metaclass_module_where_defined(meth)
-    included_modules.detect { |mod| mod.metaclass.method_defined?(meth) }
+  def replace_class_methods(mod)
+    mod.instance_methods.each { |m| remove_class_method m }
+    extend mod
   end
 
-  def module_where_defined(meth)
-    included_modules.detect { |mod| mod.method_defined?(meth) }
+  def replace_and_store_class_methods(mod, name)
+    @class_method_store ||= {}
+    @class_method_store[name] = []
+    mod.instance_methods.each do |m|
+      if metaclass.method_defined?(m)
+        metaclass.send :alias_method, "#{m}_#{name}", m
+        @class_method_store[name] << m
+        remove_class_method m
+      end
+    end
+    extend mod
+  end
+
+  def replace_and_store_instance_methods(mod, name)
+    @instance_method_store ||= {}
+    @instance_method_store[name] = []
+    mod.instance_methods.each do |m|
+      if method_defined?(m)
+        alias_method "#{m}_#{name}", m
+        @instance_method_store[name] << m
+        remove_method m
+      end
+    end
+    include mod
+  end
+
+  def restore_class_methods(name)
+  end
+
+  def restore_instance_methods(name)
+  end
+
+  def replace_instance_methods(mod)
+    mod.instance_methods.each { |m| remove_method m }
+    include mod
   end
 end
 
 module ActiveRecordless
+#  def self.included(base)
+#    base.replace_class_methods ClassMethods
+#    base.replace_instance_methods InstanceMethods
+#  end
+
   def self.included(base)
-    ClassMethods.instance_methods.each do |m|
-      begin
-        base.metaclass.send :remove_method, m 
-      rescue
-        base.metaclass_module_where_defined(m).send :remove_method, m
-      end
+    base.send :extend, DisconnectMethods
+  end
+
+  module DisconnectMethods
+    def disconnect!
+      replace_and_store_class_methods ClassMethods, :active_recordless_class
+      replace_and_store_instance_methods InstanceMethods, :active_recordless_instance
     end
-    base.send(:extend, ClassMethods)
-    InstanceMethods.instance_methods.each do |m|
-      begin
-        base.send :remove_method, m 
-      rescue
-        base.module_where_defined(m).send :remove_method, m
-      end
+
+    def reconnect!
+      restore_class_methods :active_recordless_class
+      restore_instance_methods :active_recordless_instance
     end
-    base.send(:include, InstanceMethods)
   end
 
   module ClassMethods
@@ -48,4 +88,3 @@ end
 class ActiveRecord::Base
   include ActiveRecordless
 end
-
